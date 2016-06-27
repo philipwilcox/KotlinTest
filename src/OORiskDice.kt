@@ -8,6 +8,8 @@ import java.security.SecureRandom
  *
  * TODO: a fun future thing would be to move to have a "dice pool" like how the game itself only comes
  * with so many physical dice that get reused.
+ *
+ * TODO: add some tests, see how that works in Kotlin
  */
 fun main(args: Array<String>) {
     println("Hello, world!")
@@ -19,6 +21,75 @@ fun main(args: Array<String>) {
     for (i in 1..10) {
         val results = basicBattle.doBattle()
         println("Result of attack $i: $results")
+    }
+
+    println("--Test Invasions--")
+    val random = SecureRandom()
+    for (i in 1..20) {
+        val attackerArmies = random.nextInt(8) + 2
+        val defenderArmies = random.nextInt(8) + 1
+        val result = invadeCountry(attackerArmies, defenderArmies)
+        println("Result of attacking with $attackerArmies against $defenderArmies: $result")
+    }
+}
+
+/**
+ * A POJO for storing the result of an invasion attempt.
+ */
+data class InvasionResult(val attackerWins: Boolean, val attackerArmies: Int, val defenderArmies: Int)
+
+/**
+ * Top-level action supported by this program: compute the winner of an invasion attempt that started with the given
+ * number of armies for attacker and defender and continued until either the defender was defeated or the attacker
+ * could no longer attack.
+ */
+fun invadeCountry(attackerArmies: Int, defenderArmies: Int): InvasionResult {
+    if (attackerArmies < 2)
+        throw Exception("Must have at least 2 armies to attack from a country")
+    if (defenderArmies < 1)
+        throw Exception("A country cannot be empty!")
+    var invasionResolved = false
+    var currentAttackerArmies = attackerArmies
+    var currentDefenderArmies = defenderArmies
+    // Do battle until either the defender is vanquished or the attacker is out of spare armies
+    while (!invasionResolved) {
+        val battle = Battle(AttackDice(diceCountFromArmyCount(currentAttackerArmies, true)),
+                DefendDice(diceCountFromArmyCount(currentDefenderArmies, false)))
+        //println("  Attacker has $currentAttackerArmies armies, defender has $currentDefenderArmies, Will do battle: $battle")
+        val result = battle.doBattle()
+        currentAttackerArmies -= result.attackerLosses
+        currentDefenderArmies -= result.defenderLosses
+        if (currentDefenderArmies < 1)
+            invasionResolved = true
+        else if (currentAttackerArmies < 2)
+            invasionResolved = true
+    }
+    if (currentDefenderArmies < 1)
+        return InvasionResult(true, currentAttackerArmies, currentDefenderArmies)
+    else
+        return InvasionResult(false, currentAttackerArmies, currentDefenderArmies)
+}
+
+/** Helper function for determining how many dice to use based on the role of the player and the number of armies they
+ * have.
+ *
+ * Don't like this organization, reconsider later.
+ */
+private fun diceCountFromArmyCount(armyCount: Int, attacking: Boolean): Int {
+    if (attacking) {
+        if (armyCount < 2)
+            throw Exception("Must have at least 2 armies to attack from a country")
+        else if (armyCount <= 3)
+            return armyCount - 1
+        else
+            return 3 // Max number of attacker armies
+    } else {
+        if (armyCount < 1)
+            throw Exception("A country cannot be empty!")
+        else if (armyCount == 1)
+            return armyCount
+        else
+            return 2 // Max number of defender armies
     }
 }
 
@@ -33,7 +104,7 @@ data class BattleResult(val attackerLosses: Int, val defenderLosses: Int)
  *
  * It has a doBattle function that returns a BattleResult tuple object.
  *
- * TODO: This structure can let me re-use the dice, but I don't like this sort of pattern, I'd rather have something
+ * This structure could let me re-use the dice, but I don't like this sort of pattern, I'd rather have something
  * that drew from the dice pool each time rather than just re-use the same set of dice only when the same numbers were
  * involved as in the last battle.
  */
@@ -57,6 +128,9 @@ class Battle(attackDice: AttackDice, defendDice: DefendDice) {
         }
         return BattleResult(attackLosses, defendLosses)
     }
+
+    /** For debugging */
+    override fun toString() = "Battle(${attackDice.size} attacking ${defendDice.size} dice)"
 }
 
 class Die {
@@ -79,8 +153,8 @@ open class Dice(diceCount: Int) {
 
 class AttackDice(diceCount: Int) : Dice(diceCount) {
     init {
-        if (diceCount < 2)
-            throw Exception("Must attack with at least 2 dice")
+        if (diceCount < 1)
+            throw Exception("Must attack with at least 1 die")
         if (diceCount > 3)
             throw Exception("Cannot attack with more than 3 dice")
     }
